@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nearby-eats/server"
+	"github.com/nearby-eats/clienthandler"
+	"github.com/nearby-eats/datahub"
 	config "github.com/nearby-eats/utils"
 
 	"github.com/joho/godotenv"
@@ -21,5 +22,6 @@ func main() {
 		os.Exit(1)
 	}
 	flag.Parse()
-	server.Init()
+	go datahub.Init()
+	clienthandler.Init()
 }
