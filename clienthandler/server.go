@@ -1,4 +1,4 @@
-package server
+package clienthandler
 
 import (
 	"github.com/gin-gonic/gin"
@@ -12,6 +12,7 @@ func Init() {
 	} else {
 		gin.SetMode(gin.DebugMode)
 	}
+
 	r := NewRouter()
-	r.Run(":" + config.PORT)
+	r.Run(":" + config.CLIENT_HANDLER_PORT)
 }

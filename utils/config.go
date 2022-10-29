@@ -7,8 +7,9 @@ import (
 )
 
 type configType struct {
-	ENVIRONMENT string
-	PORT        string
+	ENVIRONMENT         string
+	CLIENT_HANDLER_PORT string
+	DATA_HUB_PORT       string
 	// DOCKER_SERVER_HOST string
 	// DATABASE_NAME      string
 	// DATABASE_HOST      string

@@ -1,11 +1,11 @@
-package server
+package clienthandler
 
 import (
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/nearby-eats/controllers"
+	clientcontrollers "github.com/nearby-eats/clienthandler/controllers"
 )
 
 func NewRouter() *gin.Engine {
@@ -23,10 +23,10 @@ func NewRouter() *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	health := new(controllers.HealthController)
+	health := new(clientcontrollers.HealthController)
 
 	router.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "Hello from nearby-eats API"})
+		c.JSON(200, gin.H{"message": "Hello from nearby-eats clienthandler API"})
 	})
 	router.GET("/health", health.Status)
 	// router.Use(middlewares.AuthMiddleware())

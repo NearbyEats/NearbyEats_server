@@ -1,4 +1,4 @@
-package controllers
+package datahubcontrollers
 
 import (
 	"net/http"
