@@ -10,6 +10,8 @@ type configType struct {
 	ENVIRONMENT         string
 	CLIENT_HANDLER_PORT string
 	DATA_HUB_PORT       string
+	REDIS_URI           string
+	PLACE_API_KEY       string
 	// DOCKER_SERVER_HOST string
 	// DATABASE_NAME      string
 	// DATABASE_HOST      string

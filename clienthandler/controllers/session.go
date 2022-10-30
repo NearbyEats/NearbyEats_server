@@ -16,16 +16,16 @@ import (
 
 type SessionController struct{}
 
+type createData struct {
+	Token string `json:"token"`
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header["Origin"]
 		log.Println("Upgrading connection origin: ", origin)
 		return true
 	},
-}
-
-type createdata struct {
-	Token string `json:"token"`
 }
 
 func (h SessionController) Create(c *gin.Context) {
@@ -44,7 +44,7 @@ func (h SessionController) Create(c *gin.Context) {
 	}
 	log.Println(string(body))
 
-	data_obj := createdata{}
+	data_obj := createData{}
 
 	err = json.Unmarshal(body, &data_obj)
 	if err != nil {
@@ -74,7 +74,7 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 	ctx := context.Background()
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: utils.Config.REDIS_URI,
 	})
 
 	pubsub := rdb.Subscribe(ctx, "datahub"+token)
