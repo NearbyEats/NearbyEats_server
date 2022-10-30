@@ -21,7 +21,7 @@ func (h DataHubController) Create(c *gin.Context) {
 
 }
 
-func handleSession(id uuid.UUID) { //sub to channel, continuously re publish anything we recieve from the channle
+func handleSession(id uuid.UUID) { //sub to channel, continuously re publish anything we recieve from the channel
 	ctx := context.Background()
 
 	rdb := redis.NewClient(&redis.Options{
@@ -34,11 +34,19 @@ func handleSession(id uuid.UUID) { //sub to channel, continuously re publish any
 
 	ch := pubsub.Channel()
 
+	closeConnection := false
+
 	for msg := range ch {
 		log.Println(msg.Channel, msg.Payload)
 		err := rdb.Publish(ctx, "datahub"+id.String(), msg.Payload).Err()
 		if err != nil {
 			panic(err)
+		} else if msg.Payload == "close" {
+			closeConnection = true
+		}
+
+		if closeConnection {
+			break
 		}
 	}
 }

@@ -63,8 +63,7 @@ func (h SessionController) Join(c *gin.Context) {
 		return
 	}
 
-	// pass the connection to another g0routine
-	go h.handleDataHub(c, conn)
+	h.handleDataHub(c, conn)
 }
 
 func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
@@ -99,6 +98,9 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
+		if msg.Payload == "close" {
+			break
+		}
 		err = conn.WriteMessage(mt, []byte(msg.Payload))
 		if err != nil {
 			log.Println("write:", err)
@@ -113,17 +115,23 @@ func (h SessionController) handleClient(c *gin.Context, conn *websocket.Conn, rd
 	defer wg.Done()
 
 	token := c.Param("token")
+	closeConnection := false
 
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
-			break
+			closeConnection = true
+			message = []byte("close")
 		}
 
 		err = rdb.Publish(ctx, "client"+token, string(message)).Err()
 		if err != nil {
 			panic(err)
+		}
+
+		if closeConnection {
+			break
 		}
 	}
 }
