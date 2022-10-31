@@ -73,11 +73,11 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 
 	ctx := context.Background()
 
-	rdb := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr: utils.Config.REDIS_URI,
 	})
 
-	pubsub := rdb.Subscribe(ctx, "datahub"+token)
+	pubsub := redisClient.Subscribe(ctx, "datahub"+token)
 
 	defer pubsub.Close()
 
@@ -85,7 +85,7 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 
 	wg.Add(1)
 
-	go h.handleClient(c, conn, rdb, ctx, &wg)
+	go h.handleClient(c, conn, redisClient, ctx, &wg)
 
 	// write back the token we recieved
 	message := []byte(token)
@@ -111,7 +111,7 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 	wg.Wait()
 }
 
-func (h SessionController) handleClient(c *gin.Context, conn *websocket.Conn, rdb *redis.Client, ctx context.Context, wg *sync.WaitGroup) {
+func (h SessionController) handleClient(c *gin.Context, conn *websocket.Conn, redisClient *redis.Client, ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	token := c.Param("token")
@@ -122,10 +122,10 @@ func (h SessionController) handleClient(c *gin.Context, conn *websocket.Conn, rd
 		if err != nil {
 			log.Println("read:", err)
 			closeConnection = true
-			message = []byte("close")
+			message = []byte("{requestType: close}")
 		}
 
-		err = rdb.Publish(ctx, "client"+token, string(message)).Err()
+		err = redisClient.Publish(ctx, "client"+token, string(message)).Err()
 		if err != nil {
 			panic(err)
 		}

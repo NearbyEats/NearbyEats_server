@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"reflect"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -14,33 +15,63 @@ import (
 )
 
 type DataHubController struct {
-	mapsClient *maps.Client
-	pageToken  string
+	mapsClient               *maps.Client
+	redisClient              *redis.Client
+	sessionID                uuid.UUID
+	pageToken                string
+	updateRestaurantsCounter int
+	startRatingCounter       int
+	finishRatingCounter      int
+	currentUserIDs           map[string]UserStatus
 }
 
-func (h *DataHubController) Create(c *gin.Context) {
-	id := uuid.New()
+type UserStatus int
 
-	defer c.JSON(http.StatusOK, map[string]string{"token": id.String()})
+const (
+	Idle = iota //ranges from 0-4
+	StartRating
+	Unfinished
+	Finished
+	UpdateRestaurants
+)
+
+type ClientPayload struct {
+	RequestType    string `json:"requestType"`
+	ClientID       string `json:"clientID"`
+	RestaurantID   string `json:"restaurantID"`
+	RestaurantVote string `json:"restaurantVote"`
+}
+
+func (c ClientPayload) fillDefaults() {
+	v := reflect.Indirect(reflect.ValueOf(&c))
+	for i := 0; i < v.NumField(); i++ {
+		v.Field(i).SetString("")
+	}
+}
+
+func (h DataHubController) Create(c *gin.Context) {
+	h.sessionID = uuid.New()
+
+	defer c.JSON(http.StatusOK, map[string]string{"token": h.sessionID.String()})
 
 	err := error(nil)
 	h.mapsClient, err = maps.NewClient(maps.WithAPIKey(utils.Config.PLACE_API_KEY))
 	if err != nil {
 		log.Fatalf("fatal error: %s", err)
 	}
+	h.currentUserIDs = make(map[string]UserStatus)
 
-	go h.handleSession(id)
-
+	go h.handleSession()
 }
 
-func (h *DataHubController) handleSession(id uuid.UUID) { //sub to channel, continuously re publish anything we recieve from the channel
+func (h DataHubController) handleSession() { //sub to channel, continuously re publish anything we recieve from the channel
 	ctx := context.Background()
 
-	rdb := redis.NewClient(&redis.Options{
+	h.redisClient = redis.NewClient(&redis.Options{
 		Addr: utils.Config.REDIS_URI,
 	})
 
-	pubsub := rdb.Subscribe(ctx, "client"+id.String())
+	pubsub := h.redisClient.Subscribe(ctx, "client"+h.sessionID.String())
 
 	defer pubsub.Close()
 
@@ -50,27 +81,74 @@ func (h *DataHubController) handleSession(id uuid.UUID) { //sub to channel, cont
 
 	for msg := range ch {
 		log.Println(msg.Channel, msg.Payload)
-		err := rdb.Publish(ctx, "datahub"+id.String(), msg.Payload).Err()
+		clientPayload := ClientPayload{}
+		clientPayload.fillDefaults()
+		err := json.Unmarshal([]byte(msg.Payload), &clientPayload)
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
 
-		switch msg.Payload {
-		case "close":
-			closeConnection = true
+		switch clientPayload.RequestType {
+		case "leaveSession":
+			delete(h.currentUserIDs, clientPayload.ClientID)
+			if len(h.currentUserIDs) == 0 {
+				closeConnection = true
+			}
+			log.Println(h.currentUserIDs)
+
+		case "joinSession":
+			h.currentUserIDs[clientPayload.ClientID] = Idle
+			log.Println(h.currentUserIDs)
+
 		case "updateRestaurants":
-			searchResponse := h.getPlaceAPIData()
-			marshaledResponse, err := json.Marshal(searchResponse)
-			if err != nil {
-				panic(err)
+			if h.currentUserIDs[clientPayload.ClientID] != UpdateRestaurants {
+				h.updateRestaurantsCounter += 1
+				h.currentUserIDs[clientPayload.ClientID] = UpdateRestaurants
 			}
-			err = rdb.Publish(ctx, "datahub"+id.String(), marshaledResponse).Err()
-			if err != nil {
-				panic(err)
+
+			if h.updateRestaurantsCounter == len(h.currentUserIDs) {
+				for key := range h.currentUserIDs {
+					h.currentUserIDs[key] = Unfinished
+				}
+
+				h.updateRestaurantsCounter = 0
+
+				h.sendNewRestaurants()
 			}
+
+		case "startRating":
+			if h.currentUserIDs[clientPayload.ClientID] != StartRating {
+				h.startRatingCounter += 1
+				h.currentUserIDs[clientPayload.ClientID] = StartRating
+			}
+
+			if h.startRatingCounter == len(h.currentUserIDs) {
+				for key := range h.currentUserIDs {
+					h.currentUserIDs[key] = Unfinished
+				}
+
+				h.startRatingCounter = 0
+
+				h.sendNewRestaurants()
+			}
+
+		case "finishRating":
+			if h.currentUserIDs[clientPayload.ClientID] != Finished {
+				h.finishRatingCounter += 1
+				h.currentUserIDs[clientPayload.ClientID] = Finished
+			}
+
+			if h.finishRatingCounter == len(h.currentUserIDs) {
+				// h.sendResults()
+				log.Println("FINISHED -----------------------")
+			}
+
+		case "sendRating":
+			log.Println(h.currentUserIDs)
 		}
 
 		if closeConnection {
+			log.Println("CLOSING CONNECTION ------------------")
 			break
 		}
 	}
@@ -102,4 +180,20 @@ func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
 	h.pageToken = response.NextPageToken
 
 	return response
+}
+
+func (h *DataHubController) sendNewRestaurants() {
+	ctx := context.Background()
+
+	searchResponse := h.getPlaceAPIData()
+
+	marshaledResponse, err := json.Marshal(searchResponse)
+	if err != nil {
+		panic(err)
+	}
+
+	err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledResponse).Err()
+	if err != nil {
+		panic(err)
+	}
 }
