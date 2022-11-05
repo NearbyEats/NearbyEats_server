@@ -61,7 +61,7 @@ type DataHubPayload struct {
 }
 
 type ResultsDataPayload struct {
-	SearchResult maps.PlacesSearchResult
+	SearchResult []maps.PlacesSearchResult
 }
 
 func (h DataHubController) Create(c *gin.Context) {
@@ -146,6 +146,7 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
 			closeConnection = true
+			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
 		datahubPayload.State = UserStatus.String(3)
@@ -153,7 +154,7 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 	case "joinSession":
 		h.currentUserIDs[c.ClientID] = Idle
 		log.Println(h.currentUserIDs)
-		datahubPayload.State = UserStatus.String(1)
+		datahubPayload.State = UserStatus.String(0)
 
 	case "updateRestaurants":
 		datahubPayload.State = UserStatus.String(4)
@@ -170,6 +171,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			h.updateRestaurantsCounter = 0
 			datahubPayload.State = UserStatus.String(4)
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
+
+			h.initializeRedisDB()
 		}
 
 	case "startRating":
@@ -187,6 +190,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			h.startRatingCounter = 0
 			datahubPayload.State = UserStatus.String(2)
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
+
+			h.initializeRedisDB()
 		}
 
 	case "finishRating":
@@ -197,12 +202,13 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		}
 
 		if h.finishRatingCounter == len(h.currentUserIDs) {
-			// h.sendResults()
+			datahubPayload.ResultsData.SearchResult = append(datahubPayload.ResultsData.SearchResult, h.getRatingResult())
 			log.Println("FINISHED RATING -----------------------")
 		}
 
 	case "sendResult":
-		log.Println(h.currentUserIDs)
+		datahubPayload.State = UserStatus.String(2)
+		h.updateScore(c.RestaurantID)
 
 	default:
 		closeConnection = true
@@ -246,4 +252,71 @@ func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
 	h.placeApiData.Results = h.placeApiData.Results[10:] // remove first 10 results
 
 	return searchResponse
+}
+
+func (h *DataHubController) initializeRedisDB() {
+	ctx := context.Background()
+
+	h.cleanRedisDB()
+
+	for _, restaurant := range h.placeApiData.Results {
+		err := h.redisClient.ZAdd(ctx, h.sessionID.String()+"set", &redis.Z{
+			Score:  0,
+			Member: restaurant.PlaceID,
+		}).Err()
+		if err != nil {
+			panic(err)
+		}
+
+		marshaledRestaurant, err := json.Marshal(restaurant)
+		if err != nil {
+			panic(err)
+		}
+
+		err = h.redisClient.HSet(ctx, h.sessionID.String()+"hash", restaurant.PlaceID, string(marshaledRestaurant)).Err()
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (h *DataHubController) cleanRedisDB() {
+	ctx := context.Background()
+
+	err := h.redisClient.Del(ctx, h.sessionID.String()+"set", h.sessionID.String()+"hash").Err()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *DataHubController) updateScore(PlaceID string) {
+	ctx := context.Background()
+
+	err := h.redisClient.ZIncrBy(ctx, h.sessionID.String()+"set", 1, PlaceID).Err()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *DataHubController) getRatingResult() maps.PlacesSearchResult {
+	ctx := context.Background()
+
+	key, err := h.redisClient.ZRevRange(ctx, h.sessionID.String()+"set", 0, 0).Result()
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := h.redisClient.HGet(ctx, h.sessionID.String()+"hash", key[0]).Result()
+	if err != nil {
+		log.Println(err)
+	}
+
+	marshaledResult := maps.PlacesSearchResult{}
+	err = json.Unmarshal([]byte(result), &marshaledResult)
+	if err != nil {
+		log.Println(err)
+	}
+
+	return marshaledResult
+
 }
