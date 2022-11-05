@@ -35,6 +35,11 @@ const (
 	UpdateRestaurants
 )
 
+func (us UserStatus) String() string {
+	return []string{"StartRating", "CurrRating",
+		"FinishRating", "UpdateRestaurants"}[us]
+}
+
 type ClientPayload struct {
 	RequestType    string `json:"requestType"`
 	ClientID       string `json:"clientID"`
@@ -88,81 +93,122 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 	ch := pubsub.Channel()
 
 	closeConnection := false
+	errorVal := false
 
 	for msg := range ch {
 		log.Println(msg.Channel, msg.Payload)
 		clientPayload := ClientPayload{}
+		datahubPayload := DataHubPayload{}
 		clientPayload.fillDefaults()
 		err := json.Unmarshal([]byte(msg.Payload), &clientPayload)
 		if err != nil {
 			log.Println(err)
 		}
 
-		switch clientPayload.RequestType {
-		case "leaveSession":
-			delete(h.currentUserIDs, clientPayload.ClientID)
-			if len(h.currentUserIDs) == 0 {
-				closeConnection = true
-			}
-			log.Println(h.currentUserIDs)
-
-		case "joinSession":
-			h.currentUserIDs[clientPayload.ClientID] = Idle
-			log.Println(h.currentUserIDs)
-
-		case "updateRestaurants":
-			if h.currentUserIDs[clientPayload.ClientID] != UpdateRestaurants {
-				h.updateRestaurantsCounter += 1
-				h.currentUserIDs[clientPayload.ClientID] = UpdateRestaurants
-			}
-
-			if h.updateRestaurantsCounter == len(h.currentUserIDs) {
-				for key := range h.currentUserIDs {
-					h.currentUserIDs[key] = CurrRating
-				}
-
-				h.updateRestaurantsCounter = 0
-
-				h.sendNewRestaurants()
-			}
-
-		case "startRating":
-			if h.currentUserIDs[clientPayload.ClientID] != StartRating {
-				h.startRatingCounter += 1
-				h.currentUserIDs[clientPayload.ClientID] = StartRating
-			}
-
-			if h.startRatingCounter == len(h.currentUserIDs) {
-				for key := range h.currentUserIDs {
-					h.currentUserIDs[key] = CurrRating
-				}
-
-				h.startRatingCounter = 0
-
-				h.sendNewRestaurants()
-			}
-
-		case "finishRating":
-			if h.currentUserIDs[clientPayload.ClientID] != FinishRating {
-				h.finishRatingCounter += 1
-				h.currentUserIDs[clientPayload.ClientID] = FinishRating
-			}
-
-			if h.finishRatingCounter == len(h.currentUserIDs) {
-				// h.sendResults()
-				log.Println("FINISHED RATING -----------------------")
-			}
-
-		case "sendRating":
-			log.Println(h.currentUserIDs)
-		}
+		datahubPayload, closeConnection, errorVal = h.handleCases(clientPayload)
 
 		if closeConnection {
 			log.Println("CLOSING CONNECTION ------------------")
+			if errorVal {
+				log.Println("ERROR ------------------")
+			}
+
+			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
+			if err != nil {
+				panic(err)
+			}
+
 			break
 		}
+
+		marshaledDatahubPayload, err := json.Marshal(datahubPayload)
+		if err != nil {
+			panic(err)
+		}
+
+		err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledDatahubPayload).Err()
+		if err != nil {
+			panic(err)
+		}
+
 	}
 
+}
+
+func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, bool) {
+
+	datahubPayload := DataHubPayload{}
+	closeConnection := false
+	errorVal := false
+
+	switch c.RequestType {
+	case "leaveSession":
+		delete(h.currentUserIDs, c.ClientID)
+		if len(h.currentUserIDs) == 0 {
+			closeConnection = true
+		}
+		log.Println(h.currentUserIDs)
+		datahubPayload.State = UserStatus.String(2)
+
+	case "joinSession":
+		h.currentUserIDs[c.ClientID] = Idle
+		log.Println(h.currentUserIDs)
+		datahubPayload.State = UserStatus.String(0)
+
+	case "updateRestaurants":
+		if h.currentUserIDs[c.ClientID] != UpdateRestaurants {
+			h.updateRestaurantsCounter += 1
+			h.currentUserIDs[c.ClientID] = UpdateRestaurants
+		}
+
+		if h.updateRestaurantsCounter == len(h.currentUserIDs) {
+			for key := range h.currentUserIDs {
+				h.currentUserIDs[key] = CurrRating
+			}
+
+			h.updateRestaurantsCounter = 0
+			datahubPayload.State = UserStatus.String(3)
+			h.sendNewRestaurants()
+		}
+
+	case "startRating":
+		if h.currentUserIDs[c.ClientID] != StartRating {
+			h.startRatingCounter += 1
+			h.currentUserIDs[c.ClientID] = StartRating
+		}
+
+		if h.startRatingCounter == len(h.currentUserIDs) {
+			for key := range h.currentUserIDs {
+				h.currentUserIDs[key] = CurrRating
+			}
+
+			h.startRatingCounter = 0
+			datahubPayload.State = UserStatus.String(1)
+
+			h.sendNewRestaurants()
+		}
+
+	case "finishRating":
+		if h.currentUserIDs[c.ClientID] != FinishRating {
+			h.finishRatingCounter += 1
+			h.currentUserIDs[c.ClientID] = FinishRating
+		}
+
+		if h.finishRatingCounter == len(h.currentUserIDs) {
+			// h.sendResults()
+			datahubPayload.State = UserStatus.String(2)
+			log.Println("FINISHED RATING -----------------------")
+		}
+
+	case "sendResult":
+		log.Println(h.currentUserIDs)
+
+	default:
+		closeConnection = true
+		errorVal = true
+	}
+
+	return datahubPayload, closeConnection, errorVal
 }
 
 func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
