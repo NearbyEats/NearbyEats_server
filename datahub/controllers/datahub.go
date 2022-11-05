@@ -18,7 +18,6 @@ type DataHubController struct {
 	mapsClient               *maps.Client
 	redisClient              *redis.Client
 	sessionID                uuid.UUID
-	pageToken                string
 	updateRestaurantsCounter int
 	startRatingCounter       int
 	finishRatingCounter      int
@@ -115,6 +114,9 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 			}
 
 			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "closeConnection").Err()
+			if err != nil {
+				panic(err)
+			}
 
 			break
 		}
@@ -216,14 +218,11 @@ func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
 			Lat: 43.475074,
 			Lng: -80.543213,
 		},
-		Radius:  10000,
-		OpenNow: true,
-		Type:    maps.PlaceTypeRestaurant,
-		RankBy:  maps.RankByProminence,
-	}
-
-	if h.pageToken != "" {
-		r.PageToken = h.pageToken
+		Radius:    10000,
+		OpenNow:   true,
+		Type:      maps.PlaceTypeRestaurant,
+		RankBy:    maps.RankByProminence,
+		PageToken: h.placeApiData.NextPageToken,
 	}
 
 	response, err := h.mapsClient.NearbySearch(context.Background(), r)
@@ -232,21 +231,19 @@ func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
 		return maps.PlacesSearchResponse{}
 	}
 
-	h.pageToken = response.NextPageToken
-
 	return response
 }
 
 func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
 	if len(h.placeApiData.Results) == 0 {
-		log.Println("had to do new api call")
 		h.placeApiData = h.getPlaceAPIData()
+		log.Println("had to do new api call, len results: ", len(h.placeApiData.Results))
 	}
 
 	searchResponse := h.placeApiData
 	searchResponse.Results = searchResponse.Results[:9] // get only first ten results
 
-	h.placeApiData.Results = h.placeApiData.Results[10:] //remove first 10 results
+	h.placeApiData.Results = h.placeApiData.Results[10:] // remove first 10 results
 
 	return searchResponse
 }
