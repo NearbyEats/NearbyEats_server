@@ -49,6 +49,16 @@ func (c ClientPayload) fillDefaults() {
 	}
 }
 
+type DataHubPayload struct {
+	State        string
+	PlaceApiData maps.PlacesSearchResponse
+	ResultsData  ResultsDataPayload
+}
+
+type ResultsDataPayload struct {
+	SearchResult maps.PlacesSearchResult
+}
+
 func (h DataHubController) Create(c *gin.Context) {
 	h.sessionID = uuid.New()
 
