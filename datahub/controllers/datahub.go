@@ -30,8 +30,8 @@ type UserStatus int
 const (
 	Idle = iota //ranges from 0-4
 	StartRating
-	Unfinished
-	Finished
+	CurrRating
+	FinishRating
 	UpdateRestaurants
 )
 
@@ -108,7 +108,7 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 
 			if h.updateRestaurantsCounter == len(h.currentUserIDs) {
 				for key := range h.currentUserIDs {
-					h.currentUserIDs[key] = Unfinished
+					h.currentUserIDs[key] = CurrRating
 				}
 
 				h.updateRestaurantsCounter = 0
@@ -124,7 +124,7 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 
 			if h.startRatingCounter == len(h.currentUserIDs) {
 				for key := range h.currentUserIDs {
-					h.currentUserIDs[key] = Unfinished
+					h.currentUserIDs[key] = CurrRating
 				}
 
 				h.startRatingCounter = 0
@@ -133,14 +133,14 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 			}
 
 		case "finishRating":
-			if h.currentUserIDs[clientPayload.ClientID] != Finished {
+			if h.currentUserIDs[clientPayload.ClientID] != FinishRating {
 				h.finishRatingCounter += 1
-				h.currentUserIDs[clientPayload.ClientID] = Finished
+				h.currentUserIDs[clientPayload.ClientID] = FinishRating
 			}
 
 			if h.finishRatingCounter == len(h.currentUserIDs) {
 				// h.sendResults()
-				log.Println("FINISHED -----------------------")
+				log.Println("FINISHED RATING -----------------------")
 			}
 
 		case "sendRating":
