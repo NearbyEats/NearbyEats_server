@@ -22,6 +22,7 @@ type DataHubController struct {
 	updateRestaurantsCounter int
 	startRatingCounter       int
 	finishRatingCounter      int
+	placeApiData             maps.PlacesSearchResponse
 	currentUserIDs           map[string]UserStatus
 }
 
@@ -92,31 +93,28 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 
 	ch := pubsub.Channel()
 
-	closeConnection := false
-	errorVal := false
-
 	for msg := range ch {
 		log.Println(msg.Channel, msg.Payload)
 		clientPayload := ClientPayload{}
-		datahubPayload := DataHubPayload{}
 		clientPayload.fillDefaults()
 		err := json.Unmarshal([]byte(msg.Payload), &clientPayload)
 		if err != nil {
 			log.Println(err)
 		}
 
-		datahubPayload, closeConnection, errorVal = h.handleCases(clientPayload)
+		datahubPayload, closeConnection, errorVal := h.handleCases(clientPayload)
 
 		if closeConnection {
 			log.Println("CLOSING CONNECTION ------------------")
 			if errorVal {
 				log.Println("ERROR ------------------")
+				err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
+				if err != nil {
+					panic(err)
+				}
 			}
 
-			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
-			if err != nil {
-				panic(err)
-			}
+			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "closeConnection").Err()
 
 			break
 		}
@@ -168,7 +166,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.updateRestaurantsCounter = 0
-			h.sendNewRestaurants()
+			datahubPayload.State = UserStatus.String(4)
+			datahubPayload.PlaceApiData = h.getNewRestaurants()
 		}
 
 	case "startRating":
@@ -184,12 +183,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.startRatingCounter = 0
-
-			h.sendNewRestaurants()
+			datahubPayload.State = UserStatus.String(2)
+			datahubPayload.PlaceApiData = h.getNewRestaurants()
 		}
 
 	case "finishRating":
-		datahubPayload.State = UserStatus.String(2)
+		datahubPayload.State = UserStatus.String(3)
 		if h.currentUserIDs[c.ClientID] != FinishRating {
 			h.finishRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = FinishRating
@@ -238,18 +237,16 @@ func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
 	return response
 }
 
-func (h *DataHubController) sendNewRestaurants() {
-	ctx := context.Background()
-
-	searchResponse := h.getPlaceAPIData()
-
-	marshaledResponse, err := json.Marshal(searchResponse)
-	if err != nil {
-		panic(err)
+func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
+	if len(h.placeApiData.Results) == 0 {
+		log.Println("had to do new api call")
+		h.placeApiData = h.getPlaceAPIData()
 	}
 
-	err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledResponse).Err()
-	if err != nil {
-		panic(err)
-	}
+	searchResponse := h.placeApiData
+	searchResponse.Results = searchResponse.Results[:9] // get only first ten results
+
+	h.placeApiData.Results = h.placeApiData.Results[10:] //remove first 10 results
+
+	return searchResponse
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -103,7 +104,13 @@ func (h SessionController) handleDataHub(c *gin.Context) {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
-		if msg.Payload == "close" {
+		if msg.Payload == "closeConnection" {
+			closeNormalClosure := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+			err := h.conn.WriteControl(websocket.CloseMessage, closeNormalClosure, time.Now().Add(time.Second))
+			if err != nil {
+				log.Println("close write:", err)
+			}
+			h.conn.Close()
 			break
 		}
 		err = h.conn.WriteMessage(mt, []byte(msg.Payload))
@@ -129,7 +136,7 @@ func (h SessionController) handleClient(c *gin.Context) {
 		if err != nil {
 			log.Println("read:", err)
 			closeConnection = true
-			message = []byte("{requestType: close}")
+			message = []byte("{requestType: leaveSession}")
 		}
 
 		err = h.redisClient.Publish(ctx, "client"+token, string(message)).Err()
