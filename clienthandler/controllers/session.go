@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -14,7 +15,15 @@ import (
 	"github.com/nearby-eats/utils"
 )
 
-type SessionController struct{}
+type SessionController struct {
+	conn        *websocket.Conn
+	redisClient *redis.Client
+	wg          *sync.WaitGroup
+}
+
+type createData struct {
+	Token string `json:"token"`
+}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -22,10 +31,6 @@ var upgrader = websocket.Upgrader{
 		log.Println("Upgrading connection origin: ", origin)
 		return true
 	},
-}
-
-type createdata struct {
-	Token string `json:"token"`
 }
 
 func (h SessionController) Create(c *gin.Context) {
@@ -44,7 +49,7 @@ func (h SessionController) Create(c *gin.Context) {
 	}
 	log.Println(string(body))
 
-	data_obj := createdata{}
+	data_obj := createData{}
 
 	err = json.Unmarshal(body, &data_obj)
 	if err != nil {
@@ -57,40 +62,41 @@ func (h SessionController) Create(c *gin.Context) {
 func (h SessionController) Join(c *gin.Context) {
 	// upgrade the connection to WebSocket
 	w, r := c.Writer, c.Request
-	conn, err := upgrader.Upgrade(w, r, nil)
+	var err error
+	h.conn, err = upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("upgrade:", err)
 		return
 	}
 
-	h.handleDataHub(c, conn)
+	h.redisClient = redis.NewClient(&redis.Options{
+		Addr: utils.Config.REDIS_URI,
+	})
+
+	h.wg = &sync.WaitGroup{}
+
+	h.handleDataHub(c)
 }
 
-func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
-	defer conn.Close()
+func (h SessionController) handleDataHub(c *gin.Context) {
+	defer h.conn.Close()
 
 	token := c.Param("token")
 
 	ctx := context.Background()
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-
-	pubsub := rdb.Subscribe(ctx, "datahub"+token)
+	pubsub := h.redisClient.Subscribe(ctx, "datahub"+token)
 
 	defer pubsub.Close()
 
-	var wg sync.WaitGroup
+	h.wg.Add(1)
 
-	wg.Add(1)
-
-	go h.handleClient(c, conn, rdb, ctx, &wg)
+	go h.handleClient(c)
 
 	// write back the token we recieved
 	message := []byte(token)
 	mt := websocket.TextMessage
-	err := conn.WriteMessage(mt, message)
+	err := h.conn.WriteMessage(mt, message)
 	if err != nil {
 		log.Println("write token:", err)
 	}
@@ -98,68 +104,47 @@ func (h SessionController) handleDataHub(c *gin.Context, conn *websocket.Conn) {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
-		if msg.Payload == "close" {
+		if msg.Payload == "closeConnection" {
+			closeNormalClosure := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+			err := h.conn.WriteControl(websocket.CloseMessage, closeNormalClosure, time.Now().Add(time.Second))
+			if err != nil {
+				log.Println("close write:", err)
+			}
+			h.conn.Close()
 			break
 		}
-		err = conn.WriteMessage(mt, []byte(msg.Payload))
+		err = h.conn.WriteMessage(mt, []byte(msg.Payload))
 		if err != nil {
 			log.Println("write:", err)
 			break
 		}
 	}
 
-	wg.Wait()
+	h.wg.Wait()
 }
 
-func (h SessionController) handleClient(c *gin.Context, conn *websocket.Conn, rdb *redis.Client, ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (h SessionController) handleClient(c *gin.Context) {
+	defer h.wg.Done()
+
+	ctx := context.Background()
 
 	token := c.Param("token")
 	closeConnection := false
 
 	for {
-		_, message, err := conn.ReadMessage()
+		_, message, err := h.conn.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
 			closeConnection = true
-			message = []byte("close")
+			message = []byte("{requestType: leaveSession}")
 		}
 
-		err = rdb.Publish(ctx, "client"+token, string(message)).Err()
+		err = h.redisClient.Publish(ctx, "client"+token, string(message)).Err()
 		if err != nil {
 			panic(err)
 		}
 
 		if closeConnection {
-			break
-		}
-	}
-}
-
-func (h SessionController) Echo(c *gin.Context, conn *websocket.Conn) {
-	token := c.Param("token")
-
-	defer conn.Close()
-
-	// write back the token we recieved
-	message := []byte(token)
-	mt := websocket.TextMessage
-	err := conn.WriteMessage(mt, message)
-	if err != nil {
-		log.Println("write token:", err)
-	}
-
-	// simple echo message server
-	for {
-		mt, message, err = conn.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("recv:%s", message)
-		err = conn.WriteMessage(mt, message)
-		if err != nil {
-			log.Println("write:", err)
 			break
 		}
 	}
