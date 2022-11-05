@@ -36,7 +36,7 @@ const (
 )
 
 func (us UserStatus) String() string {
-	return []string{"StartRating", "CurrRating",
+	return []string{"Idle", "StartRating", "CurrRating",
 		"FinishRating", "UpdateRestaurants"}[us]
 }
 
@@ -148,14 +148,15 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			closeConnection = true
 		}
 		log.Println(h.currentUserIDs)
-		datahubPayload.State = UserStatus.String(2)
+		datahubPayload.State = UserStatus.String(3)
 
 	case "joinSession":
 		h.currentUserIDs[c.ClientID] = Idle
 		log.Println(h.currentUserIDs)
-		datahubPayload.State = UserStatus.String(0)
+		datahubPayload.State = UserStatus.String(1)
 
 	case "updateRestaurants":
+		datahubPayload.State = UserStatus.String(4)
 		if h.currentUserIDs[c.ClientID] != UpdateRestaurants {
 			h.updateRestaurantsCounter += 1
 			h.currentUserIDs[c.ClientID] = UpdateRestaurants
@@ -167,11 +168,11 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.updateRestaurantsCounter = 0
-			datahubPayload.State = UserStatus.String(3)
 			h.sendNewRestaurants()
 		}
 
 	case "startRating":
+		datahubPayload.State = UserStatus.String(1)
 		if h.currentUserIDs[c.ClientID] != StartRating {
 			h.startRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = StartRating
@@ -183,12 +184,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.startRatingCounter = 0
-			datahubPayload.State = UserStatus.String(1)
 
 			h.sendNewRestaurants()
 		}
 
 	case "finishRating":
+		datahubPayload.State = UserStatus.String(2)
 		if h.currentUserIDs[c.ClientID] != FinishRating {
 			h.finishRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = FinishRating
@@ -196,7 +197,6 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 		if h.finishRatingCounter == len(h.currentUserIDs) {
 			// h.sendResults()
-			datahubPayload.State = UserStatus.String(2)
 			log.Println("FINISHED RATING -----------------------")
 		}
 
