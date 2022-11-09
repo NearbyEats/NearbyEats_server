@@ -18,15 +18,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
-		datahubPayload.State = UserStatus.String(3)
 
 	case "joinSession":
 		h.currentUserIDs[c.ClientID] = Idle
 		log.Println(h.currentUserIDs)
-		datahubPayload.State = UserStatus.String(0)
 
 	case "updateRestaurants":
-		datahubPayload.State = UserStatus.String(4)
 		if h.currentUserIDs[c.ClientID] != UpdateRestaurants {
 			h.updateRestaurantsCounter += 1
 			h.currentUserIDs[c.ClientID] = UpdateRestaurants
@@ -38,14 +35,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.updateRestaurantsCounter = 0
-			datahubPayload.State = UserStatus.String(4)
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
 
 	case "startRating":
-		datahubPayload.State = UserStatus.String(1)
 		if h.currentUserIDs[c.ClientID] != StartRating {
 			h.startRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = StartRating
@@ -57,14 +52,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.startRatingCounter = 0
-			datahubPayload.State = UserStatus.String(2)
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
 
 	case "finishRating":
-		datahubPayload.State = UserStatus.String(3)
 		if h.currentUserIDs[c.ClientID] != FinishRating {
 			h.finishRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = FinishRating
@@ -76,13 +69,14 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		}
 
 	case "sendResult":
-		datahubPayload.State = UserStatus.String(2)
 		h.updateScore(c.RestaurantID)
 
 	default:
 		closeConnection = true
 		errorVal = true
 	}
+
+	datahubPayload.State = h.currentUserIDs[c.ClientID].String()
 
 	return datahubPayload, closeConnection, errorVal
 }
