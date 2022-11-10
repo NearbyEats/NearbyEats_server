@@ -7,14 +7,16 @@ import (
 func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, bool) {
 
 	datahubPayload := DataHubPayload{}
-	closeConnection := false
 	errorVal := false
+	closeSession := false
+
+	datahubPayload.ClientID = c.ClientID
 
 	switch c.RequestType {
 	case "leaveSession":
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
-			closeConnection = true
+			closeSession = true
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
@@ -34,6 +36,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 				h.currentUserIDs[key] = CurrRating
 			}
 
+			datahubPayload.ClientID = "allClients"
+
 			h.updateRestaurantsCounter = 0
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
 
@@ -51,6 +55,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 				h.currentUserIDs[key] = CurrRating
 			}
 
+			datahubPayload.ClientID = "allClients"
+
 			h.startRatingCounter = 0
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
 
@@ -64,19 +70,22 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		}
 
 		if h.finishRatingCounter == len(h.currentUserIDs) {
+			datahubPayload.ClientID = "allClients"
 			datahubPayload.ResultsData.SearchResult = append(datahubPayload.ResultsData.SearchResult, h.getRatingResult())
-			log.Println("FINISHED RATING -----------------------")
 		}
 
 	case "sendResult":
 		h.updateScore(c.RestaurantID)
 
 	default:
-		closeConnection = true
 		errorVal = true
 	}
 
-	datahubPayload.State = h.currentUserIDs[c.ClientID].String()
+	if status, found := h.currentUserIDs[c.ClientID]; found {
+		datahubPayload.State = status.String()
+	} else {
+		datahubPayload.State = "closeConnection"
+	}
 
-	return datahubPayload, closeConnection, errorVal
+	return datahubPayload, closeSession, errorVal
 }

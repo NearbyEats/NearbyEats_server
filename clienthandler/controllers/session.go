@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -20,6 +19,7 @@ type SessionController struct {
 	redisClient *redis.Client
 	wg          *sync.WaitGroup
 	sessionID   string
+	clientID    string
 }
 
 type createDataPayload struct {
@@ -69,6 +69,7 @@ func (h SessionController) Join(c *gin.Context) {
 		log.Println("upgrade:", err)
 		return
 	}
+	defer h.conn.Close()
 
 	h.redisClient = redis.NewClient(&redis.Options{
 		Addr: utils.Config.REDIS_URI,
@@ -78,69 +79,15 @@ func (h SessionController) Join(c *gin.Context) {
 
 	h.sessionID = c.Param("sessionID")
 
+	h.clientID = c.Param("clientID")
+
 	ctx := context.Background()
 
-	h.handleDataHub(c, ctx)
-}
-
-func (h SessionController) handleDataHub(c *gin.Context, ctx context.Context) {
-	defer h.conn.Close()
-
-	pubsub := h.redisClient.Subscribe(ctx, "datahub"+h.sessionID)
-
-	defer pubsub.Close()
+	h.wg.Add(1)
+	go h.handleDataHub(ctx)
 
 	h.wg.Add(1)
-
-	go h.handleClient(c, ctx)
-
-	// write back the token we recieved
-	message := []byte(h.sessionID)
-	mt := websocket.TextMessage
-	err := h.conn.WriteMessage(mt, message)
-	if err != nil {
-		log.Println("write token:", err)
-	}
-
-	ch := pubsub.Channel()
-
-	for msg := range ch {
-		if msg.Payload == "closeConnection" {
-			closeNormalClosure := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-			err := h.conn.WriteControl(websocket.CloseMessage, closeNormalClosure, time.Now().Add(time.Second))
-			if err != nil {
-				log.Println("close write:", err)
-			}
-			h.conn.Close()
-			break
-		}
-		err = h.conn.WriteMessage(mt, []byte(msg.Payload))
-		if err != nil {
-			log.Println("write:", err)
-			break
-		}
-	}
+	go h.handleClient(ctx)
 
 	h.wg.Wait()
-}
-
-func (h SessionController) handleClient(c *gin.Context, ctx context.Context) {
-	defer h.wg.Done()
-
-	isConnOpen := true
-
-	for isConnOpen {
-		_, message, err := h.conn.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			isConnOpen = false
-			message = []byte("{\"requestType\": \"leaveSession\"}")
-		}
-
-		err = h.redisClient.Publish(ctx, "client"+h.sessionID, string(message)).Err()
-		if err != nil {
-			panic(err)
-		}
-
-	}
 }
