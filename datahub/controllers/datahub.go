@@ -102,24 +102,14 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 			log.Println(err)
 		}
 
-		datahubPayload, closeConnection, errorVal := h.handleCases(clientPayload)
+		datahubPayload, closeSession, errorVal := h.handleCases(clientPayload)
 
-		if closeConnection {
-			log.Println("CLOSING CONNECTION ------------------")
-			if errorVal {
-				log.Println("ERROR ------------------")
-				err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
-				if err != nil {
-					panic(err)
-				}
-			}
-
-			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "closeConnection").Err()
+		if errorVal {
+			log.Println("ERROR ------------------")
+			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
 			if err != nil {
 				panic(err)
 			}
-
-			break
 		}
 
 		marshaledDatahubPayload, err := json.Marshal(datahubPayload)
@@ -130,6 +120,10 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 		err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledDatahubPayload).Err()
 		if err != nil {
 			panic(err)
+		}
+
+		if closeSession {
+			break
 		}
 
 	}

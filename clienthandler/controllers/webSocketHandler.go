@@ -62,7 +62,7 @@ func (h SessionController) handleClient(ctx context.Context) {
 		if err != nil {
 			log.Println("read:", err)
 			isConnOpen = false
-			message = []byte("{\"requestType\": \"leaveSession\"}")
+			message = []byte("{\"requestType\" : \"leaveSession\",\"clientID\" : \"" + h.clientID + "\"}")
 		}
 
 		err = h.redisClient.Publish(ctx, "client"+h.sessionID, string(message)).Err()

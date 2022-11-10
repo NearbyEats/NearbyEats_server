@@ -7,8 +7,8 @@ import (
 func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, bool) {
 
 	datahubPayload := DataHubPayload{}
-	closeConnection := false
 	errorVal := false
+	closeSession := false
 
 	datahubPayload.ClientID = c.ClientID
 
@@ -16,7 +16,7 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 	case "leaveSession":
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
-			closeConnection = true
+			closeSession = true
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
@@ -78,11 +78,14 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		h.updateScore(c.RestaurantID)
 
 	default:
-		closeConnection = true
 		errorVal = true
 	}
 
-	datahubPayload.State = h.currentUserIDs[c.ClientID].String()
+	if status, found := h.currentUserIDs[c.ClientID]; found {
+		datahubPayload.State = status.String()
+	} else {
+		datahubPayload.State = "closeConnection"
+	}
 
-	return datahubPayload, closeConnection, errorVal
+	return datahubPayload, closeSession, errorVal
 }
