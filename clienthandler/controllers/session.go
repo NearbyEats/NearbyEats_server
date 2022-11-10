@@ -19,9 +19,10 @@ type SessionController struct {
 	conn        *websocket.Conn
 	redisClient *redis.Client
 	wg          *sync.WaitGroup
+	sessionID   string
 }
 
-type createData struct {
+type createDataPayload struct {
 	Token string `json:"token"`
 }
 
@@ -49,7 +50,7 @@ func (h SessionController) Create(c *gin.Context) {
 	}
 	log.Println(string(body))
 
-	data_obj := createData{}
+	data_obj := createDataPayload{}
 
 	err = json.Unmarshal(body, &data_obj)
 	if err != nil {
@@ -75,26 +76,26 @@ func (h SessionController) Join(c *gin.Context) {
 
 	h.wg = &sync.WaitGroup{}
 
-	h.handleDataHub(c)
-}
-
-func (h SessionController) handleDataHub(c *gin.Context) {
-	defer h.conn.Close()
-
-	token := c.Param("token")
+	h.sessionID = c.Param("sessionID")
 
 	ctx := context.Background()
 
-	pubsub := h.redisClient.Subscribe(ctx, "datahub"+token)
+	h.handleDataHub(c, ctx)
+}
+
+func (h SessionController) handleDataHub(c *gin.Context, ctx context.Context) {
+	defer h.conn.Close()
+
+	pubsub := h.redisClient.Subscribe(ctx, "datahub"+h.sessionID)
 
 	defer pubsub.Close()
 
 	h.wg.Add(1)
 
-	go h.handleClient(c)
+	go h.handleClient(c, ctx)
 
 	// write back the token we recieved
-	message := []byte(token)
+	message := []byte(h.sessionID)
 	mt := websocket.TextMessage
 	err := h.conn.WriteMessage(mt, message)
 	if err != nil {
@@ -123,29 +124,23 @@ func (h SessionController) handleDataHub(c *gin.Context) {
 	h.wg.Wait()
 }
 
-func (h SessionController) handleClient(c *gin.Context) {
+func (h SessionController) handleClient(c *gin.Context, ctx context.Context) {
 	defer h.wg.Done()
 
-	ctx := context.Background()
+	isConnOpen := true
 
-	token := c.Param("token")
-	closeConnection := false
-
-	for {
+	for isConnOpen {
 		_, message, err := h.conn.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
-			closeConnection = true
-			message = []byte("{requestType: leaveSession}")
+			isConnOpen = false
+			message = []byte("{\"requestType\": \"leaveSession\"}")
 		}
 
-		err = h.redisClient.Publish(ctx, "client"+token, string(message)).Err()
+		err = h.redisClient.Publish(ctx, "client"+h.sessionID, string(message)).Err()
 		if err != nil {
 			panic(err)
 		}
 
-		if closeConnection {
-			break
-		}
 	}
 }
