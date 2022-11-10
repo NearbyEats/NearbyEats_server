@@ -55,6 +55,7 @@ func (c ClientPayload) fillDefaults() {
 }
 
 type DataHubPayload struct {
+	ClientID     string
 	State        string
 	PlaceApiData maps.PlacesSearchResponse
 	ResultsData  ResultsDataPayload

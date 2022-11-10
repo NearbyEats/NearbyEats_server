@@ -10,5 +10,5 @@ func SetUpV1(router *gin.Engine) {
 	v1 := router.Group("v1")
 	sessionRoute := v1.Group("session")
 	sessionRoute.GET("/create", session.Create)
-	sessionRoute.GET("/join/:sessionID", session.Join)
+	sessionRoute.GET("/join/:sessionID/:clientID", session.Join)
 }
