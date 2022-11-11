@@ -55,9 +55,9 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 				h.currentUserIDs[key] = CurrRating
 			}
 
-			datahubPayload.ClientID = "allClients"
-
 			h.startRatingCounter = 0
+
+			datahubPayload.ClientID = "allClients"
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
@@ -70,6 +70,12 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		}
 
 		if h.finishRatingCounter == len(h.currentUserIDs) {
+			for key := range h.currentUserIDs {
+				h.currentUserIDs[key] = Results
+			}
+
+			h.finishRatingCounter = 0
+
 			datahubPayload.ClientID = "allClients"
 			datahubPayload.ResultsData.SearchResult = append(datahubPayload.ResultsData.SearchResult, h.getRatingResult())
 		}
