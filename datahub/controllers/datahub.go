@@ -33,6 +33,7 @@ const (
 	CurrRating
 	FinishRating
 	UpdateRestaurants
+	Results
 )
 
 func (us UserStatus) String() string {
