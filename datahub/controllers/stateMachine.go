@@ -4,19 +4,29 @@ import (
 	"log"
 )
 
-func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, bool) {
+type HandleCasesResult struct {
+	stateEventPayload StateEventPayload `type:"data" control:"returnState"`
+	dataEventPayload  DataEventPayload  `type:"data" control:"returnData"`
+	returnState       bool              `type:"control"`
+	returnData        bool              `type:"control"`
+	closeSession      bool              `type:"control"`
+	errorVal          bool              `type:"control"`
+}
 
-	datahubPayload := DataHubPayload{}
-	errorVal := false
-	closeSession := false
+func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
-	datahubPayload.ClientID = c.ClientID
+	res := HandleCasesResult{}
+
+	res.stateEventPayload.ClientID = c.ClientID
+
+	res.returnData = true
+	res.returnState = true
 
 	switch c.RequestType {
 	case "leaveSession":
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
-			closeSession = true
+			res.closeSession = true
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
@@ -36,10 +46,10 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 				h.currentUserIDs[key] = CurrRating
 			}
 
-			datahubPayload.ClientID = "allClients"
+			res.stateEventPayload.ClientID = "allClients"
 
 			h.updateRestaurantsCounter = 0
-			datahubPayload.PlaceApiData = h.getNewRestaurants()
+			res.dataEventPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
@@ -57,8 +67,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 			h.startRatingCounter = 0
 
-			datahubPayload.ClientID = "allClients"
-			datahubPayload.PlaceApiData = h.getNewRestaurants()
+			res.stateEventPayload.ClientID = "allClients"
+			res.dataEventPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
@@ -76,22 +86,22 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 			h.finishRatingCounter = 0
 
-			datahubPayload.ClientID = "allClients"
-			datahubPayload.ResultsData.SearchResult = append(datahubPayload.ResultsData.SearchResult, h.getRatingResult())
+			res.stateEventPayload.ClientID = "allClients"
+			res.dataEventPayload.ResultsData.SearchResult = append(res.dataEventPayload.ResultsData.SearchResult, h.getRatingResult())
 		}
 
 	case "sendResult":
 		h.updateScore(c.RestaurantID)
 
 	default:
-		errorVal = true
+		res.errorVal = true
 	}
 
 	if status, found := h.currentUserIDs[c.ClientID]; found {
-		datahubPayload.State = status.String()
+		res.stateEventPayload.State = status.String()
 	} else {
-		datahubPayload.State = "closeConnection"
+		res.stateEventPayload.State = "closeConnection"
 	}
 
-	return datahubPayload, closeSession, errorVal
+	return res
 }

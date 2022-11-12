@@ -25,7 +25,7 @@ func (h SessionController) handleDataHub(ctx context.Context) {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
-		payload := dh.DataHubPayload{}
+		payload := dh.StateEventPayload{}
 		err := json.Unmarshal([]byte(msg.Payload), &payload)
 		if err != nil {
 			log.Println(err)
