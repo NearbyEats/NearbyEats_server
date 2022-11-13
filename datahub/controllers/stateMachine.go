@@ -58,7 +58,7 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 			h.initializeRedisDB()
 		}
 
-		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "startRating":
 		res.ReturnData = true
@@ -82,7 +82,7 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 			h.initializeRedisDB()
 		}
 
-		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "finishRating":
 		res.ReturnData = true
@@ -105,7 +105,7 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 			res.DataEventPayload.ResultsData.SearchResult = append(res.DataEventPayload.ResultsData.SearchResult, h.getRatingResult())
 		}
 
-		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "sendResult":
 		h.updateScore(c.RestaurantID)

@@ -72,6 +72,7 @@ type ResultsDataPayload struct {
 }
 
 type SessionStateDataPayload struct {
+	NumInSession         int
 	NumStartRating       int
 	NumUpdateRestaurants int
 	NumFinishRating      int
