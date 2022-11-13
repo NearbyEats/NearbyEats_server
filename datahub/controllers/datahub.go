@@ -38,7 +38,7 @@ const (
 
 func (us UserStatus) String() string {
 	return []string{"Idle", "StartRating", "CurrRating",
-		"FinishRating", "UpdateRestaurants"}[us]
+		"FinishRating", "UpdateRestaurants", "Results"}[us]
 }
 
 type ClientPayload struct {
@@ -62,9 +62,9 @@ type StateEventPayload struct {
 
 type DataEventPayload struct {
 	ClientID         string
-	PlaceApiData     maps.PlacesSearchResponse
-	ResultsData      ResultsDataPayload
-	SessionStateData SessionStateDataPayload
+	PlaceApiData     *maps.PlacesSearchResponse `json:",omitempty"`
+	ResultsData      *ResultsDataPayload        `json:",omitempty"`
+	SessionStateData *SessionStateDataPayload   `json:",omitempty"`
 }
 
 type ResultsDataPayload struct {
@@ -72,8 +72,8 @@ type ResultsDataPayload struct {
 }
 
 type SessionStateDataPayload struct {
-	NumUpdateRestaurants int
 	NumStartRating       int
+	NumUpdateRestaurants int
 	NumFinishRating      int
 }
 
@@ -116,17 +116,13 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 
 		handleCasesResult := h.handleCases(clientPayload)
 
-		if handleCasesResult.errorVal {
+		if handleCasesResult.ErrorVal {
 			log.Println("ERROR ------------------")
-			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
-			if err != nil {
-				panic(err)
-			}
 		}
 
 		h.checkAndReturnPayloads(ctx, handleCasesResult)
 
-		if handleCasesResult.closeSession {
+		if handleCasesResult.CloseSession {
 			break
 		}
 
@@ -136,7 +132,7 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 
 func (h *DataHubController) checkAndReturnPayloads(ctx context.Context, handleCasesResult HandleCasesResult) {
 	v := reflect.Indirect(reflect.ValueOf(&handleCasesResult))
-	vt := reflect.TypeOf(&handleCasesResult)
+	vt := reflect.TypeOf(handleCasesResult)
 	for i := 0; i < v.NumField(); i++ {
 		if vt.Field(i).Tag.Get("type") == "data" {
 			if v.FieldByName(vt.Field(i).Tag.Get("control")).Bool() {

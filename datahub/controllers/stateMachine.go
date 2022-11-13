@@ -5,28 +5,29 @@ import (
 )
 
 type HandleCasesResult struct {
-	stateEventPayload StateEventPayload `type:"data" control:"returnState"`
-	dataEventPayload  DataEventPayload  `type:"data" control:"returnData"`
-	returnState       bool              `type:"control"`
-	returnData        bool              `type:"control"`
-	closeSession      bool              `type:"control"`
-	errorVal          bool              `type:"control"`
+	StateEventPayload StateEventPayload `type:"data" control:"ReturnState"`
+	DataEventPayload  DataEventPayload  `type:"data" control:"ReturnData"`
+	ReturnState       bool              `type:"control"`
+	ReturnData        bool              `type:"control"`
+	CloseSession      bool              `type:"control"`
+	ErrorVal          bool              `type:"control"`
 }
 
 func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
 	res := HandleCasesResult{}
 
-	res.stateEventPayload.ClientID = c.ClientID
+	res.StateEventPayload.ClientID = c.ClientID
+	res.DataEventPayload.ClientID = "allClients"
 
-	res.returnData = true
-	res.returnState = true
+	res.ReturnState = true
+	res.ReturnData = false
 
 	switch c.RequestType {
 	case "leaveSession":
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
-			res.closeSession = true
+			res.CloseSession = true
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
@@ -36,6 +37,8 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 		log.Println(h.currentUserIDs)
 
 	case "updateRestaurants":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != UpdateRestaurants {
 			h.updateRestaurantsCounter += 1
 			h.currentUserIDs[c.ClientID] = UpdateRestaurants
@@ -46,15 +49,20 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 				h.currentUserIDs[key] = CurrRating
 			}
 
-			res.stateEventPayload.ClientID = "allClients"
-
 			h.updateRestaurantsCounter = 0
-			res.dataEventPayload.PlaceApiData = h.getNewRestaurants()
+
+			res.StateEventPayload.ClientID = "allClients"
+
+			res.DataEventPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
 
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+
 	case "startRating":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != StartRating {
 			h.startRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = StartRating
@@ -67,13 +75,18 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
 			h.startRatingCounter = 0
 
-			res.stateEventPayload.ClientID = "allClients"
-			res.dataEventPayload.PlaceApiData = h.getNewRestaurants()
+			res.StateEventPayload.ClientID = "allClients"
+
+			res.DataEventPayload.PlaceApiData = h.getNewRestaurants()
 
 			h.initializeRedisDB()
 		}
 
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+
 	case "finishRating":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != FinishRating {
 			h.finishRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = FinishRating
@@ -86,21 +99,26 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
 			h.finishRatingCounter = 0
 
-			res.stateEventPayload.ClientID = "allClients"
-			res.dataEventPayload.ResultsData.SearchResult = append(res.dataEventPayload.ResultsData.SearchResult, h.getRatingResult())
+			res.StateEventPayload.ClientID = "allClients"
+
+			res.DataEventPayload.ResultsData = &ResultsDataPayload{}
+			res.DataEventPayload.ResultsData.SearchResult = append(res.DataEventPayload.ResultsData.SearchResult, h.getRatingResult())
 		}
+
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "sendResult":
 		h.updateScore(c.RestaurantID)
 
 	default:
-		res.errorVal = true
+		res.ErrorVal = true
+		res.ReturnData = false
 	}
 
 	if status, found := h.currentUserIDs[c.ClientID]; found {
-		res.stateEventPayload.State = status.String()
+		res.StateEventPayload.State = status.String()
 	} else {
-		res.stateEventPayload.State = "closeConnection"
+		res.StateEventPayload.State = "closeConnection"
 	}
 
 	return res
