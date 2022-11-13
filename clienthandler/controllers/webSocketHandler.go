@@ -7,8 +7,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	dh "github.com/nearby-eats/datahub/controllers"
 )
+
+type controlInfo struct {
+	ClientID string `json:"ClientID"`
+	State    string `json:"State"`
+}
 
 func (h SessionController) handleDataHub(ctx context.Context) {
 	pubsub := h.redisClient.Subscribe(ctx, "datahub"+h.sessionID)
@@ -25,7 +29,7 @@ func (h SessionController) handleDataHub(ctx context.Context) {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
-		payload := dh.DataHubPayload{}
+		payload := controlInfo{}
 		err := json.Unmarshal([]byte(msg.Payload), &payload)
 		if err != nil {
 			log.Println(err)
