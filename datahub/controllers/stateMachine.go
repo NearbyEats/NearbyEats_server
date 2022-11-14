@@ -17,6 +17,9 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
 	res := HandleCasesResult{}
 
+	res.StateEventPayload.MessageType = "stateEvent"
+	res.DataEventPayload.MessageType = "dataEvent"
+
 	res.StateEventPayload.ClientID = c.ClientID
 	res.DataEventPayload.ClientID = "allClients"
 
