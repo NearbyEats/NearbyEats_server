@@ -56,11 +56,13 @@ func (c ClientPayload) fillDefaults() {
 }
 
 type StateEventPayload struct {
-	ClientID string
-	State    string
+	MessageType string
+	ClientID    string
+	State       string
 }
 
 type DataEventPayload struct {
+	MessageType      string
 	ClientID         string
 	PlaceApiData     *maps.PlacesSearchResponse `json:",omitempty"`
 	ResultsData      *ResultsDataPayload        `json:",omitempty"`
