@@ -81,6 +81,7 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		}
 
 	case "sendResult":
+		datahubPayload.ClientID = ""
 		h.updateScore(c.RestaurantID)
 
 	default:

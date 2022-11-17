@@ -38,7 +38,7 @@ const (
 
 func (us UserStatus) String() string {
 	return []string{"Idle", "StartRating", "CurrRating",
-		"FinishRating", "UpdateRestaurants"}[us]
+		"FinishRating", "UpdateRestaurants", "Results"}[us]
 }
 
 type ClientPayload struct {
