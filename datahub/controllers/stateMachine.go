@@ -40,8 +40,6 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 			h.updateRestaurantsCounter = 0
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
-
-			h.initializeRedisDB()
 		}
 
 	case "startRating":
@@ -59,8 +57,6 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 			datahubPayload.ClientID = "allClients"
 			datahubPayload.PlaceApiData = h.getNewRestaurants()
-
-			h.initializeRedisDB()
 		}
 
 	case "finishRating":

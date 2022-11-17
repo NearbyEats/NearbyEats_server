@@ -9,12 +9,12 @@ import (
 	"googlemaps.github.io/maps"
 )
 
-func (h *DataHubController) initializeRedisDB() {
+func (h *DataHubController) initializeRedisDB(response maps.PlacesSearchResponse) {
 	ctx := context.Background()
 
 	h.cleanRedisDB()
 
-	for _, restaurant := range h.placeApiData.Results {
+	for _, restaurant := range response.Results {
 		err := h.redisClient.ZAdd(ctx, h.sessionID.String()+"set", &redis.Z{
 			Score:  0,
 			Member: restaurant.PlaceID,
@@ -60,11 +60,13 @@ func (h *DataHubController) getRatingResult() maps.PlacesSearchResult {
 	if err != nil {
 		panic(err)
 	}
+	log.Println(key)
 
 	result, err := h.redisClient.HGet(ctx, h.sessionID.String()+"hash", key[0]).Result()
 	if err != nil {
 		log.Println(err)
 	}
+	log.Println(result)
 
 	marshaledResult := maps.PlacesSearchResult{}
 	err = json.Unmarshal([]byte(result), &marshaledResult)
@@ -73,5 +75,4 @@ func (h *DataHubController) getRatingResult() maps.PlacesSearchResult {
 	}
 
 	return marshaledResult
-
 }

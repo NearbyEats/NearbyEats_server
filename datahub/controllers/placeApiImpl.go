@@ -36,9 +36,11 @@ func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
 	}
 
 	searchResponse := h.placeApiData
-	searchResponse.Results = searchResponse.Results[:9] // get only first ten results
+	searchResponse.Results = searchResponse.Results[:10] // get only first ten results
 
-	h.placeApiData.Results = h.placeApiData.Results[10:] // remove first 10 results
+	h.placeApiData.Results = h.placeApiData.Results[11:] // remove first 10 results
+
+	h.initializeRedisDB(searchResponse)
 
 	return searchResponse
 }
