@@ -5,8 +5,8 @@ import (
 )
 
 type HandleCasesResult struct {
-	StateEventPayload StateEventPayload `type:"data" control:"ReturnState"`
 	DataEventPayload  DataEventPayload  `type:"data" control:"ReturnData"`
+	StateEventPayload StateEventPayload `type:"data" control:"ReturnState"`
 	ReturnState       bool              `type:"control"`
 	ReturnData        bool              `type:"control"`
 	CloseSession      bool              `type:"control"`
@@ -75,7 +75,7 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 			}
 
 			h.startRatingCounter = 0
-      
+
 			res.StateEventPayload.ClientID = "allClients"
 
 			res.DataEventPayload.PlaceApiData = h.getNewRestaurants()
@@ -107,7 +107,8 @@ func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "sendResult":
-		datahubPayload.ClientID = ""
+		res.ReturnData = false
+		res.ReturnState = false
 		h.updateScore(c.RestaurantID)
 
 	default:
