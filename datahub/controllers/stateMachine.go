@@ -4,19 +4,33 @@ import (
 	"log"
 )
 
-func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, bool) {
+type HandleCasesResult struct {
+	StateEventPayload StateEventPayload `type:"data" control:"ReturnState"`
+	DataEventPayload  DataEventPayload  `type:"data" control:"ReturnData"`
+	ReturnState       bool              `type:"control"`
+	ReturnData        bool              `type:"control"`
+	CloseSession      bool              `type:"control"`
+	ErrorVal          bool              `type:"control"`
+}
 
-	datahubPayload := DataHubPayload{}
-	errorVal := false
-	closeSession := false
+func (h *DataHubController) handleCases(c ClientPayload) HandleCasesResult {
 
-	datahubPayload.ClientID = c.ClientID
+	res := HandleCasesResult{}
+
+	res.StateEventPayload.MessageType = "stateEvent"
+	res.DataEventPayload.MessageType = "dataEvent"
+
+	res.StateEventPayload.ClientID = c.ClientID
+	res.DataEventPayload.ClientID = "allClients"
+
+	res.ReturnState = true
+	res.ReturnData = false
 
 	switch c.RequestType {
 	case "leaveSession":
 		delete(h.currentUserIDs, c.ClientID)
 		if len(h.currentUserIDs) == 0 {
-			closeSession = true
+			res.CloseSession = true
 			h.cleanRedisDB()
 		}
 		log.Println(h.currentUserIDs)
@@ -26,6 +40,8 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 		log.Println(h.currentUserIDs)
 
 	case "updateRestaurants":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != UpdateRestaurants {
 			h.updateRestaurantsCounter += 1
 			h.currentUserIDs[c.ClientID] = UpdateRestaurants
@@ -36,13 +52,18 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 				h.currentUserIDs[key] = CurrRating
 			}
 
-			datahubPayload.ClientID = "allClients"
-
 			h.updateRestaurantsCounter = 0
-			datahubPayload.PlaceApiData = h.getNewRestaurants()
+
+			res.StateEventPayload.ClientID = "allClients"
+
+			res.DataEventPayload.PlaceApiData = h.getNewRestaurants()
 		}
 
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+
 	case "startRating":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != StartRating {
 			h.startRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = StartRating
@@ -54,12 +75,17 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 			}
 
 			h.startRatingCounter = 0
+      
+			res.StateEventPayload.ClientID = "allClients"
 
-			datahubPayload.ClientID = "allClients"
-			datahubPayload.PlaceApiData = h.getNewRestaurants()
+			res.DataEventPayload.PlaceApiData = h.getNewRestaurants()
 		}
 
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
+
 	case "finishRating":
+		res.ReturnData = true
+
 		if h.currentUserIDs[c.ClientID] != FinishRating {
 			h.finishRatingCounter += 1
 			h.currentUserIDs[c.ClientID] = FinishRating
@@ -72,23 +98,28 @@ func (h *DataHubController) handleCases(c ClientPayload) (DataHubPayload, bool, 
 
 			h.finishRatingCounter = 0
 
-			datahubPayload.ClientID = "allClients"
-			datahubPayload.ResultsData.SearchResult = append(datahubPayload.ResultsData.SearchResult, h.getRatingResult())
+			res.StateEventPayload.ClientID = "allClients"
+
+			res.DataEventPayload.ResultsData = &ResultsDataPayload{}
+			res.DataEventPayload.ResultsData.SearchResult = append(res.DataEventPayload.ResultsData.SearchResult, h.getRatingResult())
 		}
+
+		res.DataEventPayload.SessionStateData = &SessionStateDataPayload{len(h.currentUserIDs), h.startRatingCounter, h.updateRestaurantsCounter, h.finishRatingCounter}
 
 	case "sendResult":
 		datahubPayload.ClientID = ""
 		h.updateScore(c.RestaurantID)
 
 	default:
-		errorVal = true
+		res.ErrorVal = true
+		res.ReturnData = false
 	}
 
 	if status, found := h.currentUserIDs[c.ClientID]; found {
-		datahubPayload.State = status.String()
+		res.StateEventPayload.State = status.String()
 	} else {
-		datahubPayload.State = "closeConnection"
+		res.StateEventPayload.State = "closeConnection"
 	}
 
-	return datahubPayload, closeSession, errorVal
+	return res
 }

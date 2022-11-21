@@ -55,15 +55,29 @@ func (c ClientPayload) fillDefaults() {
 	}
 }
 
-type DataHubPayload struct {
-	ClientID     string
-	State        string
-	PlaceApiData maps.PlacesSearchResponse
-	ResultsData  ResultsDataPayload
+type StateEventPayload struct {
+	MessageType string
+	ClientID    string
+	State       string
+}
+
+type DataEventPayload struct {
+	MessageType      string
+	ClientID         string
+	PlaceApiData     *maps.PlacesSearchResponse `json:",omitempty"`
+	ResultsData      *ResultsDataPayload        `json:",omitempty"`
+	SessionStateData *SessionStateDataPayload   `json:",omitempty"`
 }
 
 type ResultsDataPayload struct {
 	SearchResult []maps.PlacesSearchResult
+}
+
+type SessionStateDataPayload struct {
+	NumInSession         int
+	NumStartRating       int
+	NumUpdateRestaurants int
+	NumFinishRating      int
 }
 
 func (h DataHubController) Create(c *gin.Context) {
@@ -103,30 +117,40 @@ func (h DataHubController) handleSession() { //sub to channel, continuously re p
 			log.Println(err)
 		}
 
-		datahubPayload, closeSession, errorVal := h.handleCases(clientPayload)
+		handleCasesResult := h.handleCases(clientPayload)
 
-		if errorVal {
+		if handleCasesResult.ErrorVal {
 			log.Println("ERROR ------------------")
-			err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), "ERROR").Err()
-			if err != nil {
-				panic(err)
-			}
 		}
 
-		marshaledDatahubPayload, err := json.Marshal(datahubPayload)
-		if err != nil {
-			panic(err)
-		}
+		h.checkAndReturnPayloads(ctx, handleCasesResult)
 
-		err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledDatahubPayload).Err()
-		if err != nil {
-			panic(err)
-		}
-
-		if closeSession {
+		if handleCasesResult.CloseSession {
 			break
 		}
 
 	}
 
+}
+
+func (h *DataHubController) checkAndReturnPayloads(ctx context.Context, handleCasesResult HandleCasesResult) {
+	v := reflect.Indirect(reflect.ValueOf(&handleCasesResult))
+	vt := reflect.TypeOf(handleCasesResult)
+	for i := 0; i < v.NumField(); i++ {
+		if vt.Field(i).Tag.Get("type") == "data" {
+			if v.FieldByName(vt.Field(i).Tag.Get("control")).Bool() {
+
+				marshaledPayload, err := json.Marshal(v.Field(i).Interface())
+				if err != nil {
+					panic(err)
+				}
+
+				err = h.redisClient.Publish(ctx, "datahub"+h.sessionID.String(), marshaledPayload).Err()
+				if err != nil {
+					panic(err)
+				}
+
+			}
+		}
+	}
 }

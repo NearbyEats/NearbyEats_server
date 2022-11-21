@@ -7,7 +7,7 @@ import (
 	"googlemaps.github.io/maps"
 )
 
-func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
+func (h *DataHubController) getPlaceAPIData() *maps.PlacesSearchResponse {
 	r := &maps.NearbySearchRequest{
 		Location: &maps.LatLng{
 			Lat: 43.475074,
@@ -23,15 +23,15 @@ func (h *DataHubController) getPlaceAPIData() maps.PlacesSearchResponse {
 	response, err := h.mapsClient.NearbySearch(context.Background(), r)
 	if err != nil {
 		log.Fatalf("fatal error: %s", err)
-		return maps.PlacesSearchResponse{}
+		return &maps.PlacesSearchResponse{}
 	}
 
-	return response
+	return &response
 }
 
-func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
+func (h *DataHubController) getNewRestaurants() *maps.PlacesSearchResponse {
 	if len(h.placeApiData.Results) == 0 {
-		h.placeApiData = h.getPlaceAPIData()
+		h.placeApiData = *h.getPlaceAPIData()
 		log.Println("had to do new api call, len results: ", len(h.placeApiData.Results))
 	}
 
@@ -42,5 +42,5 @@ func (h *DataHubController) getNewRestaurants() maps.PlacesSearchResponse {
 
 	h.initializeRedisDB(searchResponse)
 
-	return searchResponse
+	return &searchResponse
 }
