@@ -10,8 +10,8 @@ import (
 func (h *DataHubController) getPlaceAPIData() *maps.PlacesSearchResponse {
 	r := &maps.NearbySearchRequest{
 		Location: &maps.LatLng{
-			Lat: 43.475074,
-			Lng: -80.543213,
+			Lat: h.lat,
+			Lng: h.lng,
 		},
 		Radius:    10000,
 		OpenNow:   true,

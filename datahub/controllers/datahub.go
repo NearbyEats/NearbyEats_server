@@ -21,6 +21,8 @@ type DataHubController struct {
 	updateRestaurantsCounter int
 	startRatingCounter       int
 	finishRatingCounter      int
+	lat                      float64
+	lng                      float64
 	placeApiData             maps.PlacesSearchResponse
 	currentUserIDs           map[string]UserStatus
 }
@@ -80,12 +82,28 @@ type SessionStateDataPayload struct {
 	NumFinishRating      int
 }
 
+type CreateRequestPayload struct {
+	Lat float64 `json:"latitude"`
+	Lng float64 `json:"longitude"`
+}
+
 func (h DataHubController) Create(c *gin.Context) {
 	h.sessionID = uuid.New()
+	s := CreateRequestPayload{}
 
 	defer c.JSON(http.StatusOK, map[string]string{"token": h.sessionID.String()})
 
-	err := error(nil)
+	err := c.BindJSON(&s)
+	if err != nil {
+		log.Println(err)
+	}
+
+	h.lat = s.Lat
+	h.lng = s.Lng
+
+	log.Println(h.lat)
+	log.Println(h.lng)
+
 	h.mapsClient, err = maps.NewClient(maps.WithAPIKey(utils.Config.PLACE_API_KEY))
 	if err != nil {
 		log.Fatalf("fatal error: %s", err)

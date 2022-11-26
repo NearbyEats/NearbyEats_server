@@ -1,6 +1,7 @@
 package clientcontrollers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -37,9 +38,21 @@ var upgrader = websocket.Upgrader{
 func (h SessionController) Create(c *gin.Context) {
 	config := utils.Config
 
+	raw, err := c.GetRawData()
+	if err != nil {
+		log.Println(err)
+	}
+
+	bodyReader := bytes.NewReader(raw)
+
 	url := "http://localhost:" + config.DATA_HUB_PORT + "/v1/datahub/create"
 
-	response, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, bodyReader)
+	if err != nil {
+		log.Println(err)
+	}
+
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
 	}
